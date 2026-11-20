@@ -1,0 +1,46 @@
+{
+  "name": "footballcop",
+  "version": "1.0.0",
+  "description": "FootballCoP manual football exercise studio",
+  "scripts": {
+    "test": "tsx --test tests/*.test.ts",
+    "dev": "vite",
+    "dev:api": "tsx watch server/index.ts",
+    "start": "tsx server/index.ts",
+    "build": "tsc && vite build",
+    "test:e2e": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mpiafletcher/footballCoP.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/mpiafletcher/footballCoP/issues"
+  },
+  "homepage": "https://github.com/mpiafletcher/footballCoP#readme",
+  "dependencies": {
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.5",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17",
+    "@playwright/test": "^1.65.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  }
+}
