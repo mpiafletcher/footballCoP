@@ -99,7 +99,15 @@ test.describe('touch tablet', () => {
     await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [end] });
     await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await expect(endpoint).not.toHaveAttribute('transform', original!);
-    await page.getByRole('button', { name: 'Undo', exact: true }).tap();
+    const undo = page.getByRole('button', { name: 'Undo', exact: true });
+    await undo.scrollIntoViewIfNeeded();
+    await expect(undo).toBeEnabled();
+    const undoBounds = await undo.boundingBox();
+    expect(undoBounds).not.toBeNull();
+    const undoPoint = { x: undoBounds!.x + undoBounds!.width / 2, y: undoBounds!.y + undoBounds!.height / 2 };
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [undoPoint] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await expect(endpoint).toHaveAttribute('transform', original!);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(820);
   });
