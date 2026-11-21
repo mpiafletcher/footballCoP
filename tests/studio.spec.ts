@@ -109,3 +109,82 @@ test.describe('touch tablet', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(820);
   });
 });
+
+test('animate a run and pass, then replay the saved exercise and share it', async ({ page, browser }) => {
+  await register(page);
+  await page.getByLabel('Exercise title').fill('Run and pass');
+  await page.getByRole('button', { name: 'Player', exact: true }).click();
+  await clickField(page, .3, .4);
+  await page.getByRole('button', { name: 'Ball', exact: true }).click();
+  await clickField(page, .4, .65);
+  const editor = page.getByRole('region', { name: 'Diagram editor' });
+  const player = editor.locator('[data-kind=player] > g');
+  const ball = editor.locator('[data-kind=ball] > g');
+  const initialPlayer = await player.getAttribute('transform');
+  const initialBall = await ball.getAttribute('transform');
+  await page.getByRole('button', { name: 'Next moment' }).click();
+  const moments = page.getByLabel('Moment', { exact: true });
+  await expect(moments).toHaveValue('1');
+  const duration = page.getByLabel('Seconds from previous moment');
+  await duration.fill('2');
+  await duration.press('Enter');
+
+  async function drag(from: [number, number], to: [number, number]) {
+    const start = await fieldPoint(page, ...from);
+    const end = await fieldPoint(page, ...to);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 5 });
+    await page.mouse.up();
+  }
+  await drag([.3, .4], [.6, .4]);
+  const finalPlayer = await player.getAttribute('transform');
+  expect(finalPlayer).not.toBe(initialPlayer);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(player).toHaveAttribute('transform', initialPlayer!);
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect(player).toHaveAttribute('transform', finalPlayer!);
+  await page.getByRole('button', { name: 'Next moment' }).click();
+  await drag([.4, .65], [.7, .65]);
+  const finalBall = await ball.getAttribute('transform');
+  expect(finalBall).not.toBe(initialBall);
+  await expect(player).toHaveAttribute('transform', finalPlayer!);
+
+  await moments.selectOption('0');
+  await expect(player).toHaveAttribute('transform', initialPlayer!);
+  await expect(ball).toHaveAttribute('transform', initialBall!);
+  await page.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(player).not.toHaveAttribute('transform', initialPlayer!);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  await expect(ball).toHaveAttribute('transform', finalBall!);
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect(player).toHaveAttribute('transform', initialPlayer!);
+
+  await page.getByText('Exercise details', { exact: true }).click();
+  await page.getByLabel('Visibility').selectOption('unlisted');
+  await page.getByRole('button', { name: 'Save exercise' }).click();
+  await expect(page.getByRole('status')).toHaveText('Saved');
+  const link = await page.getByRole('link', { name: 'Open sharing link' }).getAttribute('href');
+  await page.reload();
+  await page.getByRole('button', { name: 'Run and pass unlisted' }).click();
+  await moments.selectOption('2');
+  await expect(player).toHaveAttribute('transform', finalPlayer!);
+  await expect(ball).toHaveAttribute('transform', finalBall!);
+  await moments.selectOption('1');
+  await expect(duration).toHaveValue('2');
+  await page.getByRole('button', { name: 'Delete moment' }).click();
+  await moments.selectOption('1');
+  await expect(player).toHaveAttribute('transform', finalPlayer!);
+  await expect(ball).toHaveAttribute('transform', finalBall!);
+
+  const guest = await browser.newPage();
+  try {
+    await guest.goto(new URL(link!, page.url()).href);
+    await guest.getByRole('button', { name: 'Play', exact: true }).click();
+    await expect(guest.locator('[data-kind=ball] > g')).toHaveAttribute('transform', finalBall!);
+  } finally {
+    await guest.close();
+  }
+});

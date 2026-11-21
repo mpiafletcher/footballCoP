@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Pitch, localPoint } from './Pitch';
+import { PlaybackControls, usePlayback } from './Playback';
+import { canAnimate, DEFAULT_DURATION_MS, deleteMoment, MAX_KEYFRAMES, updateMoment } from './animation';
 import { type Diagram, type Exercise, type FieldElement, type Point, clamp, dotKinds, drawingKinds, moveElements, presets } from './model';
 
 type Tool = 'select' | 'pan' | typeof dotKinds[number] | typeof drawingKinds[number];
+type Snapshot = { diagram: Diagram; moment: number };
 type Team = 'home' | 'away' | 'neutral';
 type Interaction = {
   mode: 'move' | 'mark' | 'pan';
@@ -28,11 +31,14 @@ export function Studio({ exercise, onChange, onSave }: {
   onSave: () => void;
 }) {
   const diagram = exercise.diagram;
+  const playback = usePlayback(diagram);
+  const [moment, setMoment] = useState(0);
+  const previewing = playback.elapsed !== null;
   const svg = useRef<SVGSVGElement>(null);
   const group = useRef<SVGGElement>(null);
   const interaction = useRef<Interaction | null>(null);
-  const [past, setPast] = useState<Diagram[]>([]);
-  const [future, setFuture] = useState<Diagram[]>([]);
+  const [past, setPast] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
   const [multi, setMulti] = useState(false);
   const [selection, select] = useState<string[]>([]);
   const [tool, setTool] = useState<Tool>('select');
@@ -44,32 +50,55 @@ export function Studio({ exercise, onChange, onSave }: {
   const [draft, setDraft] = useState<Diagram>();
   const [preview, setPreview] = useState<FieldElement>();
   const [notice, setNotice] = useState('');
-  const selected = diagram.elements.filter(item => selection.includes(item.id));
+  const editingElements = playback.moments[moment].elements;
+  const editableElements = moment ? editingElements.filter(canAnimate) : editingElements;
+  const selected = editableElements.filter(item => selection.includes(item.id));
   const numberUsed = new Set(diagram.elements.flatMap(item => item.kind === 'player' && item.team === team && item.number ? [item.number] : []));
   const change = (value: Diagram) => {
     onChange({ ...exercise, diagram: value });
   };
-  const commit = (value: Diagram) => {
-    setPast(history => [...history.slice(-99), diagram]);
+  function seek(index: number) {
+    playback.reset();
+    cancel();
+    setMoment(index);
+    if (index && tool !== 'pan') setTool('select');
+  }
+  const snapshot = { diagram, moment };
+  const commit = (value: Diagram, nextMoment = Math.min(moment, value.keyframes.length)) => {
+    setPast(history => [...history.slice(-99), snapshot]);
     setFuture([]);
+    seek(nextMoment);
     change(value);
   };
   function undo() {
     const previous = past.at(-1);
     if (!previous) return;
-    setFuture(history => [diagram, ...history]);
+    setFuture(history => [snapshot, ...history]);
     setPast(past.slice(0, -1));
-    change(previous);
+    seek(previous.moment);
+    change(previous.diagram);
   }
   function redo() {
     const next = future[0];
     if (!next) return;
-    setPast(history => [...history, diagram]);
+    setPast(history => [...history, snapshot]);
     setFuture(future.slice(1));
-    change(next);
+    seek(next.moment);
+    change(next.diagram);
+  }
+  function nextMoment() {
+    if (diagram.keyframes.length >= MAX_KEYFRAMES) return;
+    const keyframes = diagram.keyframes.slice();
+    keyframes.splice(moment, 0, { durationMs: DEFAULT_DURATION_MS, positions: {} });
+    setTool('select');
+    commit({ ...diagram, keyframes }, moment + 1);
+  }
+  function moveSelection(before: FieldElement[], ids: Set<string>, dx: number, dy: number) {
+    const moved = moveElements(before, ids, dx, dy);
+    commit(updateMoment(diagram, moment, before, moved));
   }
   function remove() {
-    if (!selected.length) return;
+    if (moment || previewing || !selected.length) return;
     const ids = new Set(selection);
     commit({
       ...diagram,
@@ -81,7 +110,7 @@ export function Studio({ exercise, onChange, onSave }: {
     select([]);
   }
   function duplicate() {
-    if (!selected.length || diagram.elements.length + selected.length > 500) return;
+    if (moment || previewing || !selected.length || diagram.elements.length + selected.length > 500) return;
     const copies = moveElements(selected, new Set(selection), .035, .04)
       .map(item => ({ ...item, id: crypto.randomUUID() }));
     commit({ ...diagram, elements: [...diagram.elements, ...copies] });
@@ -96,8 +125,10 @@ export function Studio({ exercise, onChange, onSave }: {
       if (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable]')) return;
       if (command && key === 'z') { event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
       if (command && key === 'y') { event.preventDefault(); redo(); }
+      if (key === 'escape' && previewing) { playback.reset(); return; }
+      if (previewing) return;
       if (command && key === 'd') { event.preventDefault(); duplicate(); }
-      if (command && key === 'a') { event.preventDefault(); select(diagram.elements.map(item => item.id)); }
+      if (command && key === 'a') { event.preventDefault(); select(editableElements.map(item => item.id)); }
       if (key === 'delete' || key === 'backspace') { event.preventDefault(); remove(); }
       if (key === 'escape') { select([]); setTool('select'); }
       const vectors: Record<string, [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] };
@@ -105,7 +136,7 @@ export function Studio({ exercise, onChange, onSave }: {
       if (vector && selected.length && !command) {
         event.preventDefault();
         const [x, y] = diagram.pitch.orientation === 'vertical' ? [vector[1], -vector[0]] : vector;
-        commit({ ...diagram, elements: moveElements(diagram.elements, new Set(selection), x / diagram.pitch.length, y / diagram.pitch.width) });
+        moveSelection(editingElements, new Set(selected.map(item => item.id)), x / diagram.pitch.length, y / diagram.pitch.width);
       }
     }
     window.addEventListener('keydown', shortcut);
@@ -122,7 +153,7 @@ export function Studio({ exercise, onChange, onSave }: {
       position: start, end };
   }
   function down(event: PointerEvent<SVGSVGElement>) {
-    if (interaction.current || event.button !== 0) return;
+    if (interaction.current || event.button !== 0 || previewing) return;
     const matrix = group.current?.getScreenCTM();
     const svgMatrix = svg.current?.getScreenCTM();
     if (!matrix || !svgMatrix) return;
@@ -133,13 +164,14 @@ export function Studio({ exercise, onChange, onSave }: {
     const pointerId = event.pointerId;
     const target = (event.target as Element).closest('[data-element]')?.getAttribute('data-element');
     if (tool === 'select') {
-      if (!target) { select([]); return; }
+      if (!target || !editableElements.some(item => item.id === target)) { select([]); return; }
       const toggle = multi || event.shiftKey || event.metaKey || event.ctrlKey;
       const ids = toggle ? selection.includes(target) ? selection.filter(id => id !== target) : [...selection, target]
         : selection.includes(target) ? selection : [target];
       select(ids);
       if (!ids.includes(target)) return;
-      interaction.current = { mode: 'move', pointerId, start, raw, base: diagram, ids: new Set(ids), pan, matrix };
+      const movableIds = new Set(editableElements.filter(item => ids.includes(item.id)).map(item => item.id));
+      interaction.current = { mode: 'move', pointerId, start, raw, base: { ...diagram, elements: editingElements }, ids: movableIds, pan, matrix };
     } else if (tool === 'pan') {
       interaction.current = { mode: 'pan', pointerId, start, raw, base: diagram, ids: new Set(), pan, matrix: svgMatrix };
     } else if (diagram.elements.length >= 500) {
@@ -164,7 +196,7 @@ export function Studio({ exercise, onChange, onSave }: {
   }
   function move(event: PointerEvent<SVGSVGElement>) {
     const active = interaction.current;
-    if (active?.pointerId !== event.pointerId) return;
+    if (active?.pointerId !== event.pointerId || previewing) return;
     if (active.mode === 'pan') {
       const inverse = active.matrix.inverse();
       const a = new DOMPoint(active.raw.x, active.raw.y).matrixTransform(inverse);
@@ -184,6 +216,7 @@ export function Studio({ exercise, onChange, onSave }: {
   function up(event: PointerEvent<SVGSVGElement>) {
     const active = interaction.current;
     if (active?.pointerId !== event.pointerId) return;
+    if (previewing) { cancel(); return; }
     if (active.mode !== 'pan' && Math.hypot(event.clientX - active.raw.x, event.clientY - active.raw.y) > 3) {
       const p = point(event, active.matrix);
       if (active.mode === 'mark') {
@@ -191,7 +224,7 @@ export function Studio({ exercise, onChange, onSave }: {
         commit({ ...diagram, elements: [...diagram.elements, item] });
         select([item.id]);
       } else {
-        commit({ ...active.base, elements: moveElements(active.base.elements, active.ids, p.x - active.start.x, p.y - active.start.y) });
+        moveSelection(active.base.elements, active.ids, p.x - active.start.x, p.y - active.start.y);
       }
     }
     cancel();
@@ -239,6 +272,7 @@ export function Studio({ exercise, onChange, onSave }: {
       : item) });
   };
   const toolButton = (item: Tool) => <button key={item} type="button" aria-label={toolName(item)} title={toolName(item)} aria-pressed={tool === item}
+    disabled={previewing || (moment > 0 && item !== 'select' && item !== 'pan')}
     onClick={() => { setTool(item); setNotice(''); }}><span aria-hidden="true">{icon[item]}</span><small>{toolName(item)}</small></button>;
 
   return <section className="editor" aria-label="Diagram editor">
@@ -266,12 +300,36 @@ export function Studio({ exercise, onChange, onSave }: {
             <label className="check">Pitch colour<input type="color" aria-label="Pitch colour" value={pitch.colour} onChange={e => updatePitch({ colour: e.target.value })} /></label>
             <label className="check"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap to metre grid</label>
             <label className="check"><input type="checkbox" checked={diagram.showNumbers} onChange={e => commit({ ...diagram, showNumbers: e.target.checked })} /> Show player numbers</label>
-            <button className="danger" disabled={!diagram.elements.length} onClick={() => {
+            <button className="danger" disabled={moment > 0 || previewing || !diagram.elements.length} onClick={() => {
               if (confirm('Clear every element from this pitch?')) { commit({ ...diagram, elements: [], keyframes: [] }); select([]); }
             }}>Clear pitch</button>
           </div>
         </details>
       </div>
+    </div>
+    <div className="animation-controls" aria-label="Animation controls">
+      <div className="button-row animation-actions">
+        {diagram.keyframes.length > 0 && <label>Moment<select aria-label="Moment" value={moment} onChange={event => seek(Number(event.target.value))}>
+          {playback.moments.map((_, index) => <option key={index} value={index}>Moment {index + 1}</option>)}
+        </select></label>}
+        <button type="button" disabled={previewing || !diagram.elements.some(canAnimate) || diagram.keyframes.length >= MAX_KEYFRAMES} onClick={nextMoment}>Next moment</button>
+        <PlaybackControls playback={playback} />
+      </div>
+      {moment > 0 && <div className="button-row animation-actions">
+        <label>Seconds from previous moment<input type="number" min=".1" max="30" step=".1" disabled={previewing}
+          key={`${moment}-${diagram.keyframes[moment - 1].durationMs}`} defaultValue={diagram.keyframes[moment - 1].durationMs / 1000}
+          onBlur={event => {
+            const durationMs = Math.round(event.currentTarget.valueAsNumber * 1000);
+            const previous = diagram.keyframes[moment - 1].durationMs;
+            if (durationMs >= 100 && durationMs <= 30000 && durationMs !== previous) {
+              const keyframes = diagram.keyframes.map((frame, index) => index === moment - 1 ? { ...frame, durationMs } : frame);
+              commit({ ...diagram, keyframes });
+            } else event.currentTarget.value = String(previous / 1000);
+          }}
+          onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+        /></label>
+        <button type="button" className="danger" disabled={previewing} onClick={() => commit(deleteMoment(diagram, moment), moment - 1)}>Delete moment</button>
+      </div>}
     </div>
     <div className="editor-workspace">
       <div className="tools" aria-label="Pitch tools">
@@ -281,7 +339,8 @@ export function Studio({ exercise, onChange, onSave }: {
       </div>
       <div className="field-panel">
         <div className={`canvas canvas-${tool === 'pan' ? 'pan' : tool === 'select' ? 'select' : 'place'}`}>
-          <Pitch diagram={draft ?? diagram} groupRef={group} svgRef={svg} selection={selection} zoom={zoom} pan={pan} preview={preview}
+          <Pitch diagram={playback.elements ? { ...diagram, elements: playback.elements } : draft ?? { ...diagram, elements: editingElements }} groupRef={group} svgRef={svg}
+            selection={previewing ? [] : selected.map(item => item.id)} zoom={zoom} pan={pan} preview={preview}
             onDown={down} onMove={move} onUp={up} onCancel={event => { if (interaction.current?.pointerId === event.pointerId) cancel(); }} />
         </div>
         <div className="canvas-footer">
@@ -295,21 +354,25 @@ export function Studio({ exercise, onChange, onSave }: {
       </div>
     </div>
     <div className="context">
-      {tool === 'select' && <button aria-pressed={multi} onClick={() => setMulti(!multi)}>{multi ? 'Multi-select on' : 'Multi-select'}</button>}
-      {tool === 'player' && <label>Place player for <select value={team} onChange={e => setTeam(e.target.value as Team)}><option value="home">Home</option><option value="away">Away</option><option value="neutral">Neutral</option></select></label>}
-      {tool === 'label' && <label>Label text <input maxLength={90} value={label} onChange={e => setLabel(e.target.value)} /></label>}
-      {selected.length > 0 && <>
-        <span>{selected.length} selected</span>
-        <label>Colour <input aria-label="Element colour" type="color" value={selected[0].colour} onChange={e => patchSelected({ colour: e.target.value })} /></label>
-        {selected.every(item => item.kind === 'player') && <label>Team <select aria-label="Selected team" value={selected.every(item => item.kind === 'player' && item.team === (selected[0].kind === 'player' && selected[0].team)) && selected[0].kind === 'player' ? selected[0].team ?? '' : ''} onChange={e => patchSelected({ team: e.target.value as Team })}>
-          <option value="" disabled>Mixed</option><option value="home">Home</option><option value="away">Away</option><option value="neutral">Neutral</option>
-        </select></label>}
-        <button onClick={duplicate}>Duplicate</button><button className="danger" onClick={remove}>Delete selection</button>
-        {tool === 'select' && <button onClick={() => select(diagram.elements.map(item => item.id))}>Select all</button>}
+      {previewing && <span>Playback preview. Stop to return to editing.</span>}
+      {!previewing && moment > 0 && <span>Drag players or the ball to set their positions for this moment.</span>}
+      {!previewing && <>
+        {tool === 'select' && <button aria-pressed={multi} onClick={() => setMulti(!multi)}>{multi ? 'Multi-select on' : 'Multi-select'}</button>}
+        {tool === 'player' && <label>Place player for <select value={team} onChange={e => setTeam(e.target.value as Team)}><option value="home">Home</option><option value="away">Away</option><option value="neutral">Neutral</option></select></label>}
+        {tool === 'label' && <label>Label text <input maxLength={90} value={label} onChange={e => setLabel(e.target.value)} /></label>}
+        {selected.length > 0 && <>
+          <span>{selected.length} selected</span>
+          {!moment && <><label>Colour <input aria-label="Element colour" type="color" value={selected[0].colour} onChange={e => patchSelected({ colour: e.target.value })} /></label>
+          {selected.every(item => item.kind === 'player') && <label>Team <select aria-label="Selected team" value={selected.every(item => item.kind === 'player' && item.team === (selected[0].kind === 'player' && selected[0].team)) && selected[0].kind === 'player' ? selected[0].team ?? '' : ''} onChange={e => patchSelected({ team: e.target.value as Team })}>
+            <option value="" disabled>Mixed</option><option value="home">Home</option><option value="away">Away</option><option value="neutral">Neutral</option>
+          </select></label>}
+          <button onClick={duplicate}>Duplicate</button><button className="danger" onClick={remove}>Delete selection</button></>}
+          {tool === 'select' && <button onClick={() => select(editableElements.map(item => item.id))}>Select all</button>}
+        </>}
+        {!moment && !selected.length && tool === 'select' && <span>Drag to move an element. Shift-click to select several.</span>}
+        {!selected.length && tool !== 'select' && tool !== 'pan' && <span>{drawingKinds.some(item => item === tool) && tool !== 'label' ? 'Drag across the pitch to draw.' : 'Click or tap the pitch to place.'}</span>}
+        {notice && <span role="status">{notice}</span>}
       </>}
-      {!selected.length && tool === 'select' && <span>Drag to move an element. Shift-click to select several.</span>}
-      {!selected.length && tool !== 'select' && tool !== 'pan' && <span>{drawingKinds.some(item => item === tool) && tool !== 'label' ? 'Drag across the pitch to draw.' : 'Click or tap the pitch to place.'}</span>}
-      {notice && <span role="status">{notice}</span>}
     </div>
   </section>;
 }

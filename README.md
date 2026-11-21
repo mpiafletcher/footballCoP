@@ -1,6 +1,6 @@
 # FootballCoP Studio
 
-FootballCoP is a football coaching community of practice. Studio gives coaches a free workspace to draw training exercises and build a private library. An exercise can also have an unlisted or public read-only link.
+FootballCoP is a football coaching community of practice. Studio gives coaches a free workspace to draw training exercises and build a private library. Animate player and ball movement in Studio and share diagrams or animations through unlisted or public read-only links.
 
 ## Run locally
 
@@ -27,6 +27,17 @@ Open the URL printed by Vite, create an account, and sign in. The API applies mi
 - Use Ctrl/Command+Z to undo, Ctrl/Command+Shift+Z to redo, arrow keys to nudge selected elements, and Delete to remove them. Ctrl/Command+S saves.
 - Give the exercise a title and save it. To resume, choose it from **My library**. Exercise details contains metadata, visibility, and duplicate and delete actions. A saved public or unlisted exercise has a share link.
 
+## Try a run and pass
+
+1. Create an exercise in Studio. Add a player and a ball in different places on the pitch.
+2. Click **Next moment**. Drag the player to where the run should end. Change **Seconds from previous moment** to `2` and press Enter.
+3. Click **Next moment** again. Drag the ball to the player. The player stays at the end of their run.
+4. Click **Play**. The player should run first and the ball should move second. Try **Pause**, **Resume**, and **Stop**. Use the **Moment** menu to revisit and edit any pose. Undo and redo also cover animation edits.
+5. Save the exercise, reload the page, and reopen it from **My library**. Confirm the three moments and two-second first transition are still there, then play it again.
+6. To test sharing, set visibility to **Unlisted** in Exercise details, save, and open the share link in a private browser window. Press **Play** to see the same sequence.
+
+The first moment is where you add, remove, and recolour elements. Later moments edit player and ball positions. Equipment and drawings stay fixed. PNG export captures the displayed pose.
+
 ## Run checks
 
 ```sh
@@ -36,7 +47,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Unit and API integration tests default to an isolated in-memory database. Point `DATABASE_URL` to a **disposable PostgreSQL test database** to exercise the production adapter and SQL. API tests apply migrations and create test accounts. Browser checks start isolated services and cover desktop mouse and keyboard input, tablet touch input, export, and save/reopen.
+Unit and API integration tests default to an isolated in-memory database. Point `DATABASE_URL` to a **disposable PostgreSQL test database** to exercise the production adapter and SQL. API tests apply migrations and create test accounts. Browser checks start isolated services and cover desktop mouse and keyboard input, tablet touch input, PNG export, save/reopen, and playback of saved and shared animations.
 
 ## Production
 

@@ -126,3 +126,8 @@ input[type=color] { padding: 4px; width: 43px; }
 @media (min-width: 681px) and (max-width: 1060px) {
   .tools button { min-height: 36px; }
 }
+.animation-controls { display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: end; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.animation-actions { align-items: end; flex-wrap: wrap; }
+.animation-actions label { display: flex; align-items: center; gap: 6px; }
+.animation-actions input { width: 68px; }
+.animation-controls progress { width: clamp(50px, 12vw, 110px); accent-color: var(--green); }

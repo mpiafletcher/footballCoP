@@ -16,7 +16,7 @@ Pitch geometry uses metres in the view box and a single SVG transform for vertic
 
 One Zod schema validates the JSON document at the HTTP boundary. Stable UUIDs identify elements. Colours, team assignments, and labels are object properties. Position and drawing endpoints use normalized pitch coordinates, so resizing or rotating the view preserves their relative layout. The editor keeps pointer previews and undo/redo history in memory. Only completed edits change the document.
 
-Version 1 stores keyframe durations and optional position maps keyed by element ID. Initial positions live on the elements. Future playback can interpolate sparse positions using the previous resolved position. Assigning a stable identity to a ball or player lets later moments move the same object. Deleting an element clears its keyframe entries. Later schema versions should use explicit readers and migrations.
+Version 1 stores keyframe durations and optional position maps keyed by element ID. Initial positions live on the elements. Playback resolves sparse positions from the previous moment, then interpolates the current segment linearly using its duration. Assigning a stable identity to a ball or player lets later moments move the same object. Deleting an element clears its keyframe entries. Deleting a moment merges its position overrides into the next moment, which preserves the surviving pose. Studio and shared links use the same playback logic. Playback never changes the saved document. This milestone uses the existing version 1 schema and database columns.
 
 Future AI integrations should return validated exercise documents or proposed edits through the same application and validation boundary. The editor, library, and rendering require only the canonical model.
 

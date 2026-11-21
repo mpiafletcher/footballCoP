@@ -37,7 +37,6 @@ export function makeApp(db: Database, production = false) {
     }
     next();
   });
-  api.use(express.json({ limit: '768kb' }));
 
   async function coach(req: Request) {
     const session = token(req);
@@ -52,7 +51,7 @@ export function makeApp(db: Database, production = false) {
   const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false,
     message: { error: 'Too many attempts. Try again in 15 minutes.' } });
 
-  api.post('/auth/:action', authLimit, async (req, res) => {
+  api.post('/auth/:action', authLimit, express.json({ limit: '8kb' }), async (req, res) => {
     const action = req.params.action;
     if (action !== 'register' && action !== 'login') {
       res.sendStatus(404);
@@ -151,8 +150,9 @@ export function makeApp(db: Database, production = false) {
     if (row) res.status(req.params.id ? 200 : 201).json(row);
     else res.sendStatus(404);
   };
-  library.post('/', save);
-  library.put('/:id', save);
+  const exerciseBody = express.json({ limit: '6mb' });
+  library.post('/', exerciseBody, save);
+  library.put('/:id', exerciseBody, save);
   library.delete('/:id', async (req, res) => {
     const result = await db.query('DELETE FROM exercises WHERE id = $1 AND author_id = $2 RETURNING id', [req.params.id, res.locals.coach]);
     res.sendStatus(result.rows.length ? 204 : 404);

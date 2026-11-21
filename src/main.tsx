@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { api } from './api';
 import { Pitch } from './Pitch';
+import { PlaybackControls, usePlayback } from './Playback';
 import { Studio } from './Studio';
-import { type Exercise, type LibraryEntry, type SavedExercise, newExercise } from './model';
+import { type Diagram, type Exercise, type LibraryEntry, type SavedExercise, newExercise } from './model';
 import './style.css';
 
 type Account = { id: string; email: string };
@@ -45,6 +46,14 @@ function SignIn({ onSignIn }: { onSignIn: (account: Account) => void }) {
   </main>;
 }
 
+function SharedPitch({ diagram }: { diagram: Diagram }) {
+  const playback = usePlayback(diagram);
+  return <>
+    <div className="canvas"><Pitch diagram={{ ...diagram, elements: playback.elements ?? diagram.elements }} /></div>
+    {playback.total > 0 && <div className="animation-controls"><PlaybackControls playback={playback} /></div>}
+  </>;
+}
+
 function Shared({ id }: { id: string }) {
   const [exercise, setExercise] = useState<SavedExercise>();
   const [error, setError] = useState('');
@@ -53,7 +62,7 @@ function Shared({ id }: { id: string }) {
     {error ? <p role="alert">{error}</p> : exercise ? <>
       <h1>{exercise.title}</h1>
       <p>{exercise.description}</p>
-      <div className="canvas"><Pitch diagram={exercise.diagram} /></div>
+      <SharedPitch key={exercise.id} diagram={exercise.diagram} />
     </> : <p role="status">Loading exercise…</p>}
   </main></>;
 }
