@@ -41,34 +41,46 @@ function Preview({ kind, playerColour }: { kind: Tool; playerColour: string }) {
   </svg>;
 }
 
-export function ToolPalette({ tool, playerColour, previewing, laterMoment, onSelect }: {
+export function ToolPalette({ tool, playerColour, previewing, laterMoment, onSelect, undo, canUndo }: {
   tool: Tool;
   playerColour: string;
   previewing: boolean;
   laterMoment: boolean;
   onSelect: (tool: Tool) => void;
+  undo: () => void;
+  canUndo: boolean;
 }) {
+  const [drawer, setDrawer] = useState(false);
   const [category, setCategory] = useState(0);
   function button(kind: Tool) {
     return <button className="tool-option" key={kind} type="button" aria-pressed={tool === kind}
       disabled={previewing || (laterMoment && kind !== 'select' && kind !== 'pan')}
-      onClick={() => onSelect(kind)}>
+      onClick={() => { onSelect(kind); setDrawer(false); }}>
       <Preview kind={kind} playerColour={playerColour} />
       <span>{labels[kind]}</span>
     </button>;
   }
 
   return <aside className="tools" aria-label="Pitch tools">
-    <div className="tool-navigation">{button('select')}{button('pan')}</div>
-    <div className="tool-categories" role="group" aria-label="Element categories">
-      {categories.map(({ name, tools }, index) => <button type="button" key={name} aria-pressed={category === index}
-        onClick={() => {
-          setCategory(index);
-          if (tool !== 'select' && tool !== 'pan' && !tools.some(item => item === tool)) onSelect('select');
-        }}>{name}</button>)}
+    <div className="touch-tools" aria-label="Quick tools">
+      {button('select')}{!laterMoment && <>{button('player')}{button('ball')}</>}
+      <button type="button" onClick={undo} disabled={!canUndo}>Undo last edit</button>
+      {!laterMoment && <button type="button" aria-expanded={drawer} onClick={() => setDrawer(!drawer)}>{drawer ? 'Close tools' : 'More tools'}</button>}
+      {laterMoment && button('pan')}
     </div>
-    {laterMoment
-      ? <p className="tool-hint">Add elements in Moment 1.</p>
-      : <div className="tool-items" role="group" aria-label={categories[category].name}>{categories[category].tools.map(button)}</div>}
+    <div className={`tool-browser${drawer ? ' tool-browser-open' : ''}`}>
+      <div className="tool-sheet-header"><strong>Pitch tools</strong><button type="button" onClick={() => setDrawer(false)}>Close</button></div>
+      <div className="tool-navigation">{button('select')}{button('pan')}</div>
+      <div className="tool-categories" role="group" aria-label="Element categories">
+        {categories.map(({ name, tools }, index) => <button type="button" key={name} aria-pressed={category === index}
+          onClick={() => {
+            setCategory(index);
+            if (tool !== 'select' && tool !== 'pan' && !tools.some(item => item === tool)) onSelect('select');
+          }}>{name}</button>)}
+      </div>
+      {laterMoment
+        ? <p className="tool-hint">Add elements in Moment 1.</p>
+        : <div className="tool-items" role="group" aria-label={categories[category].name}>{categories[category].tools.map(button)}</div>}
+    </div>
   </aside>;
 }

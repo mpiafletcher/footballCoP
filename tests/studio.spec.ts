@@ -124,13 +124,13 @@ test('animate a run and pass, then replay the saved exercise and share it', asyn
   await page.getByRole('button', { name: 'Ball', exact: true }).click();
   await clickField(page, .4, .65);
   const editor = page.getByRole('region', { name: 'Diagram editor' });
-  const player = editor.locator('[data-kind=player] > g');
-  const ball = editor.locator('[data-kind=ball] > g');
+  const player = editor.locator('.field-panel [data-kind=player] > g');
+  const ball = editor.locator('.field-panel [data-kind=ball] > g');
   const initialPlayer = await player.getAttribute('transform');
   const initialBall = await ball.getAttribute('transform');
   await page.getByRole('button', { name: 'Next moment' }).click();
-  const moments = page.getByLabel('Moment', { exact: true });
-  await expect(moments).toHaveValue('1');
+  const moment = (index: number) => page.getByRole('button', { name: `Moment ${index + 1}`, exact: true });
+  await expect(moment(1)).toHaveAttribute('aria-pressed', 'true');
   const duration = page.getByLabel('Seconds from previous moment');
   await duration.fill('2');
   await duration.press('Enter');
@@ -156,7 +156,7 @@ test('animate a run and pass, then replay the saved exercise and share it', asyn
   expect(finalBall).not.toBe(initialBall);
   await expect(player).toHaveAttribute('transform', finalPlayer!);
 
-  await moments.selectOption('0');
+  await moment(0).click();
   await expect(player).toHaveAttribute('transform', initialPlayer!);
   await expect(ball).toHaveAttribute('transform', initialBall!);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -175,13 +175,13 @@ test('animate a run and pass, then replay the saved exercise and share it', asyn
   const link = await page.getByRole('link', { name: 'Open sharing link' }).getAttribute('href');
   await page.reload();
   await page.getByRole('button', { name: 'Run and pass unlisted' }).click();
-  await moments.selectOption('2');
+  await moment(2).click();
   await expect(player).toHaveAttribute('transform', finalPlayer!);
   await expect(ball).toHaveAttribute('transform', finalBall!);
-  await moments.selectOption('1');
+  await moment(1).click();
   await expect(duration).toHaveValue('2');
   await page.getByRole('button', { name: 'Delete moment' }).click();
-  await moments.selectOption('1');
+  await moment(1).click();
   await expect(player).toHaveAttribute('transform', finalPlayer!);
   await expect(ball).toHaveAttribute('transform', finalBall!);
 
@@ -193,4 +193,63 @@ test('animate a run and pass, then replay the saved exercise and share it', asyn
   } finally {
     await guest.close();
   }
+});
+
+test.describe('phone landscape', () => {
+  test.use({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true });
+
+  test('generates a drill and edits a line and pass with touch', async ({ page }) => {
+    await register(page);
+    await page.getByRole('button', { name: 'Random passing drill' }).tap();
+    await expect(page.locator('.field-panel [data-kind=player]')).toHaveCount(4);
+    await expect(page.getByRole('button', { name: 'Moment 5', exact: true })).toBeAttached();
+    await page.getByRole('button', { name: 'Pitch view', exact: true }).tap();
+    await expect(page.getByRole('button', { name: 'Exit pitch view' })).toBeVisible();
+
+    const field = page.locator('.field-panel .pitch');
+    await field.scrollIntoViewIfNeeded();
+    const initialWidth = (await field.getAttribute('viewBox'))!.split(' ')[2];
+    const a = await fieldPoint(page, .43, .5);
+    const b = await fieldPoint(page, .57, .5);
+    const outwardA = await fieldPoint(page, .37, .5);
+    const outwardB = await fieldPoint(page, .63, .5);
+    const session = await page.context().newCDPSession(page);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...a, id: 1 }, { ...b, id: 2 }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...outwardA, id: 1 }, { ...outwardB, id: 2 }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(async () => Number((await field.getAttribute('viewBox'))!.split(' ')[2])).toBeLessThan(Number(initialWidth));
+    await page.getByTitle('Reset view').click();
+
+    await page.getByRole('button', { name: 'More tools' }).tap();
+    await page.getByRole('button', { name: 'Drawing', exact: true }).tap();
+    await page.getByRole('button', { name: 'Movement arrow' }).tap();
+    await field.scrollIntoViewIfNeeded();
+    async function tapPitch(x: number, y: number) {
+      const screen = await fieldPoint(page, x, y);
+      await page.touchscreen.tap(screen.x, screen.y);
+    }
+    await tapPitch(.31, .34);
+    await tapPitch(.67, .39);
+    await expect(page.locator('.field-panel [data-kind=movement]')).toHaveCount(1);
+    const handle = page.locator('.field-panel [data-endpoint=end] circle').first();
+    const bounds = await handle.boundingBox();
+    const newEnd = await fieldPoint(page, .7, .48);
+    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: bounds!.x + bounds!.width / 2, y: bounds!.y + bounds!.height / 2 }] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [newEnd] });
+    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(handle).toHaveAttribute('cy', /^(8\.|9\.)/);
+
+    const ball = page.locator('.field-panel [data-kind=ball] > g > circle').first();
+    const ballBounds = await ball.boundingBox();
+    await page.touchscreen.tap(ballBounds!.x + ballBounds!.width / 2, ballBounds!.y + ballBounds!.height / 2);
+    await page.getByRole('button', { name: 'Quick pass' }).tap();
+    await field.scrollIntoViewIfNeeded();
+    await tapPitch(.55, .51);
+    await expect(page.getByRole('button', { name: 'Moment 2', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Moment 6', exact: true })).toBeAttached();
+    await page.getByRole('button', { name: 'Previous positions' }).tap();
+    await expect(page.locator('.field-panel .pitch > g > g[data-selection=true] > circle')).toHaveCount(5);
+    await page.getByRole('button', { name: 'Save exercise' }).click();
+    await expect(page.getByRole('status')).toHaveText('Saved');
+  });
 });

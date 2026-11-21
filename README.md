@@ -27,12 +27,20 @@ Open the URL printed by Vite, create an account, and sign in. The API applies mi
 - Use Ctrl/Command+Z to undo, Ctrl/Command+Shift+Z to redo, arrow keys to nudge selected elements, and Delete to remove them. Ctrl/Command+S saves.
 - Give the exercise a title and save it. To resume, choose it from **My library**. Exercise details contains metadata, visibility, and duplicate and delete actions. A saved public or unlisted exercise has a share link.
 
+## Draw and animate on a phone
+
+- Turn your phone sideways and choose **Pitch view** for a larger canvas. **More tools** opens equipment and drawing controls. Pinch to zoom, then move two fingers together to pan.
+- Pick **Movement arrow** and tap the start and end points. Drag either white handle to adjust the line. Dragging across the pitch also works for drawing.
+- Tap a moment thumbnail to edit it. Toggle **Previous positions** to see where players and the ball were in the preceding moment.
+- Select the ball, choose **Quick pass**, then tap a player or a spot. Studio inserts a moment with the ball at that destination.
+- Choose **Random passing drill** from **My library** for an editable four-player exercise. Studio varies the passing pattern, orientation, and timing. Press **Play** immediately, or customize the drill and save a copy to your library.
+
 ## Try a run and pass
 
 1. Create an exercise in Studio. Add a player and a ball in different places on the pitch.
 2. Click **Next moment**. Drag the player to where the run should end. Change **Seconds from previous moment** to `2` and press Enter.
 3. Click **Next moment** again. Drag the ball to the player. The player stays at the end of their run.
-4. Click **Play**. The player should run first and the ball should move second. Try **Pause**, **Resume**, and **Stop**. Use the **Moment** menu to revisit and edit any pose. Undo and redo also cover animation edits.
+4. Click **Play**. The player should run first and the ball should move second. Try **Pause**, **Resume**, and **Stop**. Tap a moment thumbnail to revisit and edit any pose. Undo and redo also cover animation edits.
 5. Save the exercise, reload the page, and reopen it from **My library**. Confirm the three moments and two-second first transition are still there, then play it again.
 6. To test sharing, set visibility to **Unlisted** in Exercise details, save, and open the share link in a private browser window. Press **Play** to see the same sequence.
 

@@ -4,6 +4,7 @@ import { api } from './api';
 import { Pitch } from './Pitch';
 import { PlaybackControls, usePlayback } from './Playback';
 import { Studio } from './Studio';
+import { randomPassingDrill } from './passingDrill';
 import { type Diagram, type Exercise, type LibraryEntry, type SavedExercise, newExercise } from './model';
 import './style.css';
 
@@ -134,6 +135,11 @@ function Workspace({ account, onSignOut }: { account: Account; onSignOut: () => 
     <main className="workspace">
       <aside className="library">
         <div className="library-title"><h2>My library</h2><button aria-label="New exercise" title="New exercise" disabled={busy} onClick={() => { if (canLeave()) load(newExercise()); }}>＋</button></div>
+        <button className="random-drill" disabled={busy} onClick={() => {
+          if (!canLeave()) return;
+          load(newExercise());
+          setExercise(randomPassingDrill());
+        }}>Random passing drill</button>
         {libraryLoading && <p>Loading exercises…</p>}
         {!libraryLoading && !library.length && <p>Saved exercises will appear here.</p>}
         <ul>{library.map(entry => <li key={entry.id}><button disabled={busy} aria-current={id === entry.id ? 'true' : undefined} onClick={() => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { memo, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Pitch, localPoint } from './Pitch';
 import { ToolPalette, type Tool } from './ToolPalette';
 import { PlaybackControls, usePlayback } from './Playback';
@@ -8,7 +8,9 @@ import { type Diagram, type Exercise, type FieldElement, type Point, clamp, dotK
 type Snapshot = { diagram: Diagram; moment: number };
 type Team = 'home' | 'away' | 'neutral';
 type Interaction = {
-  mode: 'move' | 'mark' | 'pan';
+  mode: 'move' | 'mark' | 'pan' | 'place' | 'endpoint' | 'pass';
+  endpoint?: 'position' | 'end';
+  target?: string;
   pointerId: number;
   start: Point;
   raw: Point;
@@ -17,7 +19,12 @@ type Interaction = {
   pan: Point;
   matrix: DOMMatrix;
 };
+type Pinch = { midpoint: Point; distance: number; zoom: number; pan: Point; matrix: DOMMatrix };
 const teamColours = { home: '#f4c85f', away: '#79b7ff', neutral: '#f0f4e7' };
+
+const MomentPreview = memo(function MomentPreview({ diagram, elements }: { diagram: Diagram; elements: FieldElement[] }) {
+  return <span aria-hidden="true"><Pitch diagram={{ ...diagram, elements }} /></span>;
+});
 
 export function Studio({ exercise, onChange, onSave }: {
   exercise: Exercise;
@@ -29,7 +36,10 @@ export function Studio({ exercise, onChange, onSave }: {
   const [moment, setMoment] = useState(0);
   const previewing = playback.elapsed !== null;
   const svg = useRef<SVGSVGElement>(null);
+  const momentStrip = useRef<HTMLDivElement>(null);
   const group = useRef<SVGGElement>(null);
+  const touchPoints = useRef(new Map<number, Point>());
+  const pinch = useRef<Pinch | null>(null);
   const interaction = useRef<Interaction | null>(null);
   const [past, setPast] = useState<Snapshot[]>([]);
   const [future, setFuture] = useState<Snapshot[]>([]);
@@ -44,6 +54,11 @@ export function Studio({ exercise, onChange, onSave }: {
   const [draft, setDraft] = useState<Diagram>();
   const [preview, setPreview] = useState<FieldElement>();
   const [notice, setNotice] = useState('');
+  const [focus, setFocus] = useState(false);
+  const [ghosts, setGhosts] = useState(false);
+  const [markStart, setMarkStart] = useState<Point>();
+  const [passBall, setPassBall] = useState<string>();
+  const addMoment = !previewing && diagram.keyframes.length < MAX_KEYFRAMES;
   const editingElements = playback.moments[moment].elements;
   const editableElements = moment ? editingElements.filter(canAnimate) : editingElements;
   const selected = editableElements.filter(item => selection.includes(item.id));
@@ -54,6 +69,8 @@ export function Studio({ exercise, onChange, onSave }: {
   function seek(index: number) {
     playback.reset();
     cancel();
+    setMarkStart(undefined);
+    setPassBall(undefined);
     setMoment(index);
     if (index && tool !== 'pan') setTool('select');
   }
@@ -80,10 +97,10 @@ export function Studio({ exercise, onChange, onSave }: {
     seek(next.moment);
     change(next.diagram);
   }
-  function nextMoment() {
-    if (diagram.keyframes.length >= MAX_KEYFRAMES) return;
+  function nextMoment(positions: Record<string, Point> = {}) {
+    if (!addMoment) return;
     const keyframes = diagram.keyframes.slice();
-    keyframes.splice(moment, 0, { durationMs: DEFAULT_DURATION_MS, positions: {} });
+    keyframes.splice(moment, 0, { durationMs: DEFAULT_DURATION_MS, positions });
     setTool('select');
     commit({ ...diagram, keyframes }, moment + 1);
   }
@@ -124,7 +141,7 @@ export function Studio({ exercise, onChange, onSave }: {
       if (command && key === 'd') { event.preventDefault(); duplicate(); }
       if (command && key === 'a') { event.preventDefault(); select(editableElements.map(item => item.id)); }
       if (key === 'delete' || key === 'backspace') { event.preventDefault(); remove(); }
-      if (key === 'escape') { select([]); setTool('select'); }
+      if (key === 'escape') { select([]); setTool('select'); setMarkStart(undefined); setPassBall(undefined); setFocus(false); }
       const vectors: Record<string, [number, number]> = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] };
       const vector = vectors[key];
       if (vector && selected.length && !command) {
@@ -137,6 +154,16 @@ export function Studio({ exercise, onChange, onSave }: {
     return () => window.removeEventListener('keydown', shortcut);
   });
 
+  useEffect(() => {
+    const strip = momentStrip.current;
+    const active = strip?.children[moment] as HTMLElement | undefined;
+    if (!strip || !active) return;
+    const stripBounds = strip.getBoundingClientRect();
+    const activeBounds = active.getBoundingClientRect();
+    if (activeBounds.right > stripBounds.right) strip.scrollLeft += activeBounds.right - stripBounds.right;
+    if (activeBounds.left < stripBounds.left) strip.scrollLeft -= stripBounds.left - activeBounds.left;
+  }, [moment, diagram.keyframes.length]);
+
   function point(event: PointerEvent, matrix: DOMMatrix) {
     const { length, width } = diagram.pitch;
     const p = localPoint(matrix, event.clientX, event.clientY, length, width);
@@ -146,18 +173,71 @@ export function Studio({ exercise, onChange, onSave }: {
     return { id: crypto.randomUUID(), kind: tool as typeof drawingKinds[number], colour: '#f7e17e',
       position: start, end };
   }
+  function place(start: Point) {
+    if (tool === 'label' && !label.trim()) { setNotice('Enter the label text first.'); return; }
+    const colour = tool === 'player' ? teamColours[team] : tool === 'cone' ? '#ff925e' : '#f6f5eb';
+    const id = crypto.randomUUID();
+    const base = { id, colour, position: start };
+    const item: FieldElement = tool === 'label'
+      ? { ...base, kind: 'label', text: label.trim() }
+      : { ...base, kind: tool as typeof dotKinds[number], ...(tool === 'player' ? { team, number: Array.from({ length: 99 }, (_, i) => i + 1).find(i => !numberUsed.has(i)) } : {}) };
+    commit({ ...diagram, elements: [...diagram.elements, item] });
+    select([id]);
+    setNotice('');
+  }
+
+  function touchPair() {
+    const [a, b] = touchPoints.current.values();
+    return { midpoint: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
+  }
+
+  function dragEndpoint(active: Interaction, p: Point) {
+    const { endpoint, target, base } = active;
+    if (!endpoint) return base.elements;
+    return base.elements.map(item => item.id === target ? { ...item, [endpoint]: p } : item);
+  }
+
   function down(event: PointerEvent<SVGSVGElement>) {
-    if (interaction.current || event.button !== 0 || previewing) return;
+    if (event.button !== 0 || previewing) return;
     const matrix = group.current?.getScreenCTM();
     const svgMatrix = svg.current?.getScreenCTM();
     if (!matrix || !svgMatrix) return;
+    const pointerId = event.pointerId;
+    if (event.pointerType === 'touch') {
+      event.currentTarget.setPointerCapture(pointerId);
+      touchPoints.current.set(pointerId, { x: event.clientX, y: event.clientY });
+      if (touchPoints.current.size > 1) {
+        event.currentTarget.setPointerCapture(pointerId);
+        if (touchPoints.current.size === 2) {
+          cancel();
+          pinch.current = { ...touchPair(), zoom, pan, matrix: svgMatrix };
+        }
+        return;
+      }
+    }
+    if (interaction.current) return;
     const start = point(event, matrix);
     const raw = { x: event.clientX, y: event.clientY };
     const local = new DOMPoint(raw.x, raw.y).matrixTransform(matrix.inverse());
-    if (tool !== 'select' && tool !== 'pan' && (local.x < 0 || local.y < 0 || local.x > diagram.pitch.length || local.y > diagram.pitch.width)) return;
-    const pointerId = event.pointerId;
-    const target = (event.target as Element).closest('[data-element]')?.getAttribute('data-element');
-    if (tool === 'select') {
+    if ((passBall || (tool !== 'select' && tool !== 'pan')) && (local.x < 0 || local.y < 0 || local.x > diagram.pitch.length || local.y > diagram.pitch.width)) return;
+    const hit = event.target as Element;
+    let target = hit.closest('[data-element]')?.getAttribute('data-element') ?? undefined;
+    if (event.pointerType === 'touch' && !target && (tool === 'select' || passBall)) {
+      let best = 20;
+      for (const item of editableElements) {
+        if ('end' in item || item.kind === 'label') continue;
+        const center = new DOMPoint(item.position.x * diagram.pitch.length, item.position.y * diagram.pitch.width).matrixTransform(matrix);
+        const distance = Math.hypot(raw.x - center.x, raw.y - center.y);
+        if (distance < best) { best = distance; target = item.id; }
+      }
+    }
+    const endpoint = hit.closest('[data-endpoint]')?.getAttribute('data-endpoint') as Interaction['endpoint'];
+    const base = { pointerId, start, raw, base: diagram, ids: new Set<string>(), pan, matrix };
+    if (passBall) {
+      interaction.current = { ...base, mode: 'pass', target };
+    } else if (endpoint && target && tool === 'select') {
+      interaction.current = { ...base, mode: 'endpoint', endpoint, target };
+    } else if (tool === 'select') {
       if (!target || !editableElements.some(item => item.id === target)) { select([]); return; }
       const toggle = multi || event.shiftKey || event.metaKey || event.ctrlKey;
       const ids = toggle ? selection.includes(target) ? selection.filter(id => id !== target) : [...selection, target]
@@ -173,22 +253,34 @@ export function Studio({ exercise, onChange, onSave }: {
       return;
     } else if (drawingKinds.some(kind => kind === tool) && tool !== 'label') {
       interaction.current = { mode: 'mark', pointerId, start, raw, base: diagram, ids: new Set(), pan, matrix };
+    } else if (event.pointerType === 'touch') {
+      interaction.current = { ...base, mode: 'place' };
     } else {
-      if (tool === 'label' && !label.trim()) { setNotice('Enter the label text first.'); return; }
-      const colour = tool === 'player' ? teamColours[team] : tool === 'cone' ? '#ff925e' : '#f6f5eb';
-      const id = crypto.randomUUID();
-      const base = { id, colour, position: start };
-      const item: FieldElement = tool === 'label'
-        ? { ...base, kind: 'label', text: label.trim() }
-        : { ...base, kind: tool as typeof dotKinds[number], ...(tool === 'player' ? { team, number: Array.from({ length: 99 }, (_, i) => i + 1).find(i => !numberUsed.has(i)) } : {}) };
-      commit({ ...diagram, elements: [...diagram.elements, item] });
-      select([id]);
-      setNotice('');
+      place(start);
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
   }
   function move(event: PointerEvent<SVGSVGElement>) {
+    if (touchPoints.current.has(event.pointerId)) {
+      touchPoints.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const gesture = pinch.current;
+      if (gesture && touchPoints.current.size >= 2) {
+        const pair = touchPair();
+        const nextZoom = Math.max(1, Math.min(3, gesture.zoom * pair.distance / gesture.distance));
+        const inverse = gesture.matrix.inverse();
+        const a = new DOMPoint(gesture.midpoint.x, gesture.midpoint.y).matrixTransform(inverse);
+        const b = new DOMPoint(pair.midpoint.x, pair.midpoint.y).matrixTransform(inverse);
+        const view = svg.current!.dataset.exportViewbox!.split(' ').map(Number);
+        const ratio = gesture.zoom / nextZoom;
+        setZoom(nextZoom);
+        setPan(nextZoom === 1 ? { x: 0, y: 0 } : {
+          x: a.x - view[0] - (b.x - view[0] - gesture.pan.x) * ratio,
+          y: a.y - view[1] - (b.y - view[1] - gesture.pan.y) * ratio,
+        });
+        return;
+      }
+    }
     const active = interaction.current;
     if (active?.pointerId !== event.pointerId || previewing) return;
     if (active.mode === 'pan') {
@@ -199,27 +291,49 @@ export function Studio({ exercise, onChange, onSave }: {
       return;
     }
     const p = point(event, active.matrix);
-    if (active.mode === 'mark') setPreview(drawing(active.start, p));
-    else setDraft({ ...active.base, elements: moveElements(active.base.elements, active.ids, p.x - active.start.x, p.y - active.start.y) });
+    if (active.mode === 'mark') setPreview(drawing(markStart ?? active.start, p));
+    if (active.mode === 'endpoint') setDraft({ ...active.base, elements: dragEndpoint(active, p) });
+    if (active.mode === 'move') setDraft({ ...active.base, elements: moveElements(active.base.elements, active.ids, p.x - active.start.x, p.y - active.start.y) });
   }
   function cancel() {
     interaction.current = null;
     setDraft(undefined);
     setPreview(undefined);
   }
+  function finishTouch(pointerId: number) {
+    touchPoints.current.delete(pointerId);
+    if (!pinch.current) return false;
+    if (!touchPoints.current.size) pinch.current = null;
+    return true;
+  }
+
   function up(event: PointerEvent<SVGSVGElement>) {
+    if (finishTouch(event.pointerId)) return;
     const active = interaction.current;
     if (active?.pointerId !== event.pointerId) return;
     if (previewing) { cancel(); return; }
-    if (active.mode !== 'pan' && Math.hypot(event.clientX - active.raw.x, event.clientY - active.raw.y) > 3) {
-      const p = point(event, active.matrix);
-      if (active.mode === 'mark') {
-        const item = drawing(active.start, p);
-        commit({ ...diagram, elements: [...diagram.elements, item] });
-        select([item.id]);
-      } else {
-        moveSelection(active.base.elements, active.ids, p.x - active.start.x, p.y - active.start.y);
-      }
+    const p = point(event, active.matrix);
+    const dragged = Math.hypot(event.clientX - active.raw.x, event.clientY - active.raw.y) > 3;
+    if (active.mode === 'mark') {
+      if (markStart || dragged) {
+        const start = markStart ?? active.start;
+        if (start.x !== p.x || start.y !== p.y) {
+          const item = drawing(start, p);
+          commit({ ...diagram, elements: [...diagram.elements, item] });
+          select([item.id]);
+          setTool('select');
+        }
+      } else setMarkStart(p);
+    } else if (active.mode === 'endpoint' && dragged) {
+      commit({ ...diagram, elements: dragEndpoint(active, p) });
+    } else if (active.mode === 'move' && dragged) {
+      moveSelection(active.base.elements, active.ids, p.x - active.start.x, p.y - active.start.y);
+    } else if (active.mode === 'place' && !dragged) {
+      place(p);
+    } else if (active.mode === 'pass' && passBall && !dragged) {
+      const receiver = editingElements.find(item => item.id === active.target && item.kind === 'player');
+      const destination = receiver ? { ...receiver.position, y: clamp(receiver.position.y + .06) } : p;
+      nextMoment({ [passBall]: destination });
     }
     cancel();
   }
@@ -265,7 +379,7 @@ export function Studio({ exercise, onChange, onSave }: {
       ? { ...item, ...(patch.colour ? { colour: patch.colour } : {}), ...(item.kind === 'player' && patch.team ? { team: patch.team, colour: teamColours[patch.team] } : {}) }
       : item) });
   };
-  return <section className="editor" aria-label="Diagram editor">
+  return <section className={`editor${focus ? ' editor-focus' : ''}`} aria-label="Diagram editor">
     <div className="canvas-header">
       <div className="button-row">
         <select aria-label="Pitch preset" value={pitch.preset} onChange={e => {
@@ -277,7 +391,8 @@ export function Studio({ exercise, onChange, onSave }: {
         <button aria-label="Redo" title="Redo (Ctrl/Command Shift Z)" disabled={!future.length} onClick={redo}>↷</button>
       </div>
       <div className="button-row">
-        <button onClick={exportPng}>Export PNG</button>
+        <button className="focus-toggle" aria-pressed={focus} onClick={() => setFocus(!focus)}>{focus ? 'Exit pitch view' : 'Pitch view'}</button>
+        <button className="export-button" onClick={exportPng}>Export PNG</button>
         <details className="pitch-settings"><summary>Pitch settings</summary>
           <div className="settings-popover">
             <label>Length (m)<input key={`l-${pitch.length}`} aria-label="Pitch length" type="number" min="5" max="120" defaultValue={pitch.length}
@@ -299,11 +414,13 @@ export function Studio({ exercise, onChange, onSave }: {
     </div>
     <div className="animation-controls" aria-label="Animation controls">
       <div className="button-row animation-actions">
-        {diagram.keyframes.length > 0 && <label>Moment<select aria-label="Moment" value={moment} onChange={event => seek(Number(event.target.value))}>
-          {playback.moments.map((_, index) => <option key={index} value={index}>Moment {index + 1}</option>)}
-        </select></label>}
-        <button type="button" disabled={previewing || !diagram.elements.some(canAnimate) || diagram.keyframes.length >= MAX_KEYFRAMES} onClick={nextMoment}>Next moment</button>
+        <button type="button" disabled={!addMoment || !diagram.elements.some(canAnimate)} onClick={() => nextMoment()}>Next moment</button>
+        {selected.length === 1 && selected[0].kind === 'ball' && addMoment &&
+          <button type="button" aria-pressed={!!passBall} onClick={() => {
+            setTool('select'); setPassBall(passBall ? undefined : selected[0].id);
+          }}>Quick pass</button>}
         <PlaybackControls playback={playback} />
+        {passBall && <span className="tool-hint">Tap a receiver or a spot.</span>}
       </div>
       {moment > 0 && <div className="button-row animation-actions">
         <label>Seconds from previous moment<input type="number" min=".1" max="30" step=".1" disabled={previewing}
@@ -321,14 +438,32 @@ export function Studio({ exercise, onChange, onSave }: {
         <button type="button" className="danger" disabled={previewing} onClick={() => commit(deleteMoment(diagram, moment), moment - 1)}>Delete moment</button>
       </div>}
     </div>
+    {diagram.keyframes.length > 0 && <div className="moment-bar">
+      <div className="moment-strip" ref={momentStrip} role="group" aria-label="Animation moments">
+        {playback.moments.map((pose, index) => {
+          const visible = Math.abs(index - moment) <= 5;
+          return <button key={index} type="button" className="moment" aria-label={`Moment ${index + 1}`}
+            aria-pressed={index === moment} onClick={() => seek(index)}>
+            {visible && <MomentPreview diagram={diagram} elements={pose.elements} />}
+            <small>{index + 1}</small>
+          </button>;
+        })}
+      </div>
+      <button type="button" aria-pressed={ghosts} title="Show the previous moment on the pitch" onClick={() => setGhosts(!ghosts)}>Previous positions</button>
+    </div>}
     <div className="editor-workspace">
       <ToolPalette tool={tool} playerColour={teamColours[team]} previewing={previewing} laterMoment={moment > 0}
-        onSelect={item => { setTool(item); setNotice(''); }} />
+        onSelect={item => { setTool(item); setNotice(''); setMarkStart(undefined); setPassBall(undefined); }}
+        undo={undo} canUndo={past.length > 0} />
       <div className="field-panel">
         <div className={`canvas canvas-${tool === 'pan' ? 'pan' : tool === 'select' ? 'select' : 'place'}`}>
           <Pitch diagram={playback.elements ? { ...diagram, elements: playback.elements } : draft ?? { ...diagram, elements: editingElements }} groupRef={group} svgRef={svg}
-            selection={previewing ? [] : selected.map(item => item.id)} zoom={zoom} pan={pan} preview={preview}
-            onDown={down} onMove={move} onUp={up} onCancel={event => { if (interaction.current?.pointerId === event.pointerId) cancel(); }} />
+            selection={previewing ? [] : selected.map(item => item.id)} zoom={zoom} pan={pan} preview={preview} anchor={markStart}
+            ghosts={ghosts && moment && !previewing ? playback.moments[moment - 1].elements.filter(canAnimate) : []}
+            onDown={down} onMove={move} onUp={up} onCancel={event => {
+              finishTouch(event.pointerId);
+              if (interaction.current?.pointerId === event.pointerId) cancel();
+            }} />
         </div>
         <div className="canvas-footer">
           <span>{pitch.length} × {pitch.width} m <span className="divider">·</span> {diagram.elements.filter(item => item.kind === 'player').length} players</span>
@@ -357,7 +492,7 @@ export function Studio({ exercise, onChange, onSave }: {
           {tool === 'select' && <button onClick={() => select(editableElements.map(item => item.id))}>Select all</button>}
         </>}
         {!moment && !selected.length && tool === 'select' && <span>Drag to move an element. Shift-click to select several.</span>}
-        {!selected.length && tool !== 'select' && tool !== 'pan' && <span>{drawingKinds.some(item => item === tool) && tool !== 'label' ? 'Drag across the pitch to draw.' : 'Click or tap the pitch to place.'}</span>}
+        {!selected.length && tool !== 'select' && tool !== 'pan' && <span>{drawingKinds.some(item => item === tool) && tool !== 'label' ? 'Drag to draw, or tap the start and end.' : 'Click or tap the pitch to place.'}</span>}
         {notice && <span role="status">{notice}</span>}
       </>}
     </div>

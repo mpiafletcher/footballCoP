@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { type PointerEventHandler, type Ref } from 'react';
 import { type Diagram, type FieldElement, type Point, clamp } from './model';
 
@@ -72,7 +73,7 @@ export function ElementSymbol({ item, showNumbers }: { item: Pick<FieldElement, 
   }
 }
 
-export function Pitch({ diagram, groupRef, svgRef, selection = [], zoom = 1, pan = { x: 0, y: 0 }, preview, onDown, onMove, onUp, onCancel }: {
+export function Pitch({ diagram, groupRef, svgRef, selection = [], zoom = 1, pan = { x: 0, y: 0 }, preview, anchor, ghosts = [], onDown, onMove, onUp, onCancel }: {
   diagram: Diagram;
   groupRef?: Ref<SVGGElement>;
   svgRef?: Ref<SVGSVGElement>;
@@ -80,11 +81,14 @@ export function Pitch({ diagram, groupRef, svgRef, selection = [], zoom = 1, pan
   zoom?: number;
   pan?: Point;
   preview?: FieldElement;
+  anchor?: Point;
+  ghosts?: FieldElement[];
   onDown?: PointerEventHandler<SVGSVGElement>;
   onMove?: PointerEventHandler<SVGSVGElement>;
   onUp?: PointerEventHandler<SVGSVGElement>;
   onCancel?: PointerEventHandler<SVGSVGElement>;
 }) {
+  const markerPrefix = useId().replace(/:/g, '');
   const { length: L, width: W, colour, orientation } = diagram.pitch;
   const vertical = orientation === 'vertical';
   const scale = Math.min(L, W) / 68;
@@ -98,7 +102,7 @@ export function Pitch({ diagram, groupRef, svgRef, selection = [], zoom = 1, pan
     onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onCancel} onLostPointerCapture={onCancel}>
     <defs>
       {items.filter(item => ['movement', 'pass', 'dribble'].includes(item.kind)).map(item =>
-        <marker key={item.id} id={`arrow-${item.id}`} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+        <marker key={item.id} id={`arrow-${markerPrefix}-${item.id}`} viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
           <path d="M0 0L8 4L0 8Z" fill={item.colour} />
         </marker>
       )}
@@ -107,6 +111,13 @@ export function Pitch({ diagram, groupRef, svgRef, selection = [], zoom = 1, pan
       <rect x={-margin} y={-margin} width={L + 2 * margin} height={W + 2 * margin} rx={margin * .4} fill={colour} />
       {Array.from({ length: 5 }, (_, index) => <rect key={index} x={L * index / 5} width={L / 10} height={W} fill="#fff" opacity=".042" />)}
       <Markings pitch={diagram.pitch} />
+      {anchor && <circle data-selection="true" pointerEvents="none" cx={anchor.x * L} cy={anchor.y * W}
+        r={scale * 1.3} fill="#f7e17e" stroke="#fff" strokeWidth={scale * .3} />}
+      <g opacity=".4" pointerEvents="none" data-selection="true">
+        {ghosts.map(item => <circle key={item.id} cx={item.position.x * L} cy={item.position.y * W}
+          r={scale * (item.kind === 'ball' ? 1.65 : 2.8)} fill="none" stroke={item.colour} strokeWidth={scale * .42}
+          strokeDasharray={`${scale} ${scale * .65}`} />)}
+      </g>
       {items.map(item => {
         const { x, y } = { x: item.position.x * L, y: item.position.y * W };
         const selected = selection.includes(item.id);
@@ -124,13 +135,19 @@ export function Pitch({ diagram, groupRef, svgRef, selection = [], zoom = 1, pan
                 <path data-hit="true" d={path} stroke="transparent" strokeWidth={scale * 4} fill="none" />
                 <path d={path} stroke={item.colour} strokeWidth={scale * (selected ? .85 : .55)} fill="none"
                   strokeDasharray={['pass', 'dashed'].includes(item.kind) ? `${scale * 1.5} ${scale}` : undefined}
-                  markerEnd={['pass', 'movement', 'dribble'].includes(item.kind) ? `url(#arrow-${item.id})` : undefined} />
+                  markerEnd={['pass', 'movement', 'dribble'].includes(item.kind) ? `url(#arrow-${markerPrefix}-${item.id})` : undefined} />
               </>;
           })() : <g transform={`translate(${x} ${y}) ${vertical ? 'rotate(-90)' : ''} scale(${scale})`}>
             {item.kind === 'label'
               ? <text fill={item.colour} stroke={selected ? '#fff' : '#14291f'} strokeWidth=".45" paintOrder="stroke" fontSize="3.1" fontFamily="sans-serif" fontWeight="700">{item.text}</text>
               : <><circle data-hit="true" r="4" fill="transparent" />{selected && <circle data-selection="true" r="3.55" fill="none" stroke="#f8f4b9" strokeWidth=".33" />}<ElementSymbol item={item} showNumbers={diagram.showNumbers} /></>}
           </g>}
+          {end && selected && ['movement', 'pass', 'dribble', 'dashed'].includes(item.kind) &&
+            ([['position', x, y], ['end', end.x * L, end.y * W]] as const).map(([name, cx, cy]) =>
+              <g key={name} data-endpoint={name} data-selection="true">
+                <circle cx={cx} cy={cy} r={scale * 4} fill="transparent" />
+                <circle cx={cx} cy={cy} r={scale * 1.25} fill="#fff" stroke={item.colour} strokeWidth={scale * .45} />
+              </g>)}
         </g>;
       })}
     </g>

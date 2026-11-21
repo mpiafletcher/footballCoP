@@ -133,3 +133,48 @@ input[type=color] { padding: 4px; width: 43px; }
 .animation-actions label { display: flex; align-items: center; gap: 6px; }
 .animation-actions input { width: 68px; }
 .animation-controls progress { width: clamp(50px, 12vw, 110px); accent-color: var(--green); }
+.random-drill { width: 100%; margin-bottom: 8px; }
+.tool-browser { display: grid; gap: 10px; }
+.touch-tools, .tool-sheet-header { display: none; }
+.moment-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.moment-strip { display: flex; flex: 1; gap: 5px; min-width: 0; overflow: auto; padding: 3px; }
+.moment { display: grid; place-items: center; flex: 0 0 62px; gap: 2px; min-height: 42px; padding: 2px; }
+.moment[aria-pressed=true], .moment-bar > button[aria-pressed=true] { background: #e5f0e3; border-color: #90b492; color: #174a35; }
+.moment .pitch { width: 54px; height: 25px; }
+.focus-toggle { white-space: nowrap; }
+.workspace:has(.editor-focus) { display: block; padding: 0; }
+.workspace:has(.editor-focus) .library, .workspace:has(.editor-focus) .metadata { display: none; }
+.workspace:has(.editor-focus) .exercise-header { margin: 0; padding: 4px 12px; }
+body:has(.editor-focus) .topbar, .workspace:has(.editor-focus) .exercise-header h1 { display: none; }
+.workspace:has(.editor-focus) .editor { border-radius: 0; }
+.editor-focus .field-panel .pitch { height: clamp(150px, 59dvh, 650px); }
+.editor-focus .editor-workspace { align-items: start; }
+@media (max-width: 680px), (max-height: 540px) and (pointer: coarse) {
+  .tools { padding: 5px; }
+  .touch-tools { display: flex; flex-wrap: wrap; align-items: stretch; gap: 4px; }
+  .touch-tools button { min-height: 42px; font-size: .71rem; padding: 4px 6px; }
+  .touch-tools .tool-option { display: flex; align-items: center; }
+  .touch-tools .tool-option svg { width: 24px; height: 19px; }
+  .tool-browser { display: none; }
+  .tool-browser-open {
+    position: fixed; z-index: 5; inset: auto 0 0; display: grid; padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+    max-height: 72dvh; overflow: auto; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 14px 14px 0 0; box-shadow: 0 -5px 30px #142b2140;
+  }
+  .tool-sheet-header { display: flex; align-items: center; justify-content: space-between; }
+  .tool-browser .tool-navigation { grid-template-columns: repeat(2, 72px); }
+  .tool-browser .tool-categories { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tool-browser .tool-items { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
+  .moment-bar { padding: 4px; }
+  .moment-bar > button { font-size: .7rem; max-width: 95px; }
+}
+@media (max-height: 540px) and (pointer: coarse) and (orientation: landscape) {
+  .editor-focus .editor-workspace { grid-template-columns: 108px minmax(0, 1fr); }
+  .editor-focus .touch-tools { display: grid; grid-template-columns: 1fr; }
+  .editor-focus .touch-tools button { min-height: 32px; }
+  .editor-focus .canvas-header, .editor-focus .animation-controls, .editor-focus .moment-bar { padding-block: 3px; }
+  .editor-focus .exercise-header .exercise-title { min-height: 32px; font-size: 1rem; }
+  .editor-focus .canvas-footer { padding-block: 3px; }
+  .editor-focus .field-panel .pitch { height: clamp(135px, calc(100dvh - 199px), 340px); }
+  .editor-focus .export-button { display: none; }
+}

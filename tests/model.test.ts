@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
-import { diagramSchema, moveElements, newExercise, type FieldElement } from '../src/model';
+import { diagramSchema, exerciseSchema, moveElements, newExercise, type FieldElement } from '../src/model';
 import { buildMoments, deleteMoment, sampleMoments, updateMoment } from '../src/animation';
+import { randomPassingDrill } from '../src/passingDrill';
+
 
 
 test('moving a selection to a boundary preserves spacing and drawing endpoints', () => {
@@ -47,4 +49,18 @@ test('sparse moments interpolate over their own durations and preserve surviving
   assert.deepEqual(edited.elements, diagram.elements);
   assert.deepEqual(edited.keyframes[0].positions[ball.id], { x: .5, y: .5 });
   assert.equal(diagram.keyframes[0].positions[ball.id], undefined);
+});
+
+test('random passing drill variants create valid private exercises with an animated ball', () => {
+  const titles = new Set<string>();
+  for (const roll of [0, .4, .9]) {
+    const exercise = randomPassingDrill(() => roll);
+    assert.equal(exerciseSchema.safeParse(exercise).success, true);
+    assert.equal(exercise.visibility, 'private');
+    assert.equal(exercise.playerCount, 4);
+    assert.equal(exercise.diagram.keyframes.length, 4);
+    assert.ok(exercise.diagram.keyframes.every(frame => Object.keys(frame.positions).length === 1));
+    titles.add(exercise.title);
+  }
+  assert.equal(titles.size, 3);
 });
