@@ -33,6 +33,11 @@ test('desktop coach edits, exports, saves, reloads and saves again', async ({ pa
   await page.getByRole('button', { name: 'Player', exact: true }).click();
   for (let index = 0; index < 10; index++) await clickField(page, .15 + index % 5 * .16, index < 5 ? .29 : .7);
   for (const [index, equipment] of ['Ball', 'Cone', 'Full-size goal'].entries()) {
+    if (equipment === 'Cone') {
+      await page.getByRole('button', { name: 'Equipment', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Player', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Mini goal', exact: true })).toBeVisible();
+    }
     await page.getByRole('button', { name: equipment, exact: true }).click();
     await clickField(page, .35 + index * .15, .48);
   }
@@ -87,6 +92,7 @@ test.describe('touch tablet', () => {
     const alongLength = await fieldPoint(page, .7, .2);
     const alongWidth = await fieldPoint(page, .2, .7);
     expect((alongLength.y - origin.y) / (origin.x - alongWidth.x)).toBeCloseTo(42 / 19, 5);
+    await page.getByRole('button', { name: 'Equipment', exact: true }).tap();
     await page.getByRole('button', { name: 'Cone', exact: true }).tap();
     await page.touchscreen.tap(origin.x, origin.y);
     await expect(page.locator('[data-kind=cone]')).toHaveCount(1);

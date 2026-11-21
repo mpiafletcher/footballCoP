@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Pitch, localPoint } from './Pitch';
+import { ToolPalette, type Tool } from './ToolPalette';
 import { PlaybackControls, usePlayback } from './Playback';
 import { canAnimate, DEFAULT_DURATION_MS, deleteMoment, MAX_KEYFRAMES, updateMoment } from './animation';
 import { type Diagram, type Exercise, type FieldElement, type Point, clamp, dotKinds, drawingKinds, moveElements, presets } from './model';
 
-type Tool = 'select' | 'pan' | typeof dotKinds[number] | typeof drawingKinds[number];
 type Snapshot = { diagram: Diagram; moment: number };
 type Team = 'home' | 'away' | 'neutral';
 type Interaction = {
@@ -17,13 +17,7 @@ type Interaction = {
   pan: Point;
   matrix: DOMMatrix;
 };
-const icon: Record<Tool, string> = {
-  select: '↖', pan: '✥', player: '●', ball: '◉', cone: '▲', pole: '│', mannequin: '♟', marker: '⬭', 'mini goal': '⊓',
-  goal: '▣', gate: '· ·', movement: '↗', pass: '⇢', dribble: '⤴', dashed: '┄', zone: '□', label: 'T',
-};
 const teamColours = { home: '#f4c85f', away: '#79b7ff', neutral: '#f0f4e7' };
-const labels: Partial<Record<Tool, string>> = { player: 'Player', goal: 'Full-size goal', marker: 'Flat marker', movement: 'Movement arrow', pass: 'Passing arrow', dribble: 'Dribbling path', dashed: 'Dashed line', label: 'Label' };
-const toolName = (tool: Tool) => labels[tool] ?? tool[0].toUpperCase() + tool.slice(1);
 
 export function Studio({ exercise, onChange, onSave }: {
   exercise: Exercise;
@@ -271,10 +265,6 @@ export function Studio({ exercise, onChange, onSave }: {
       ? { ...item, ...(patch.colour ? { colour: patch.colour } : {}), ...(item.kind === 'player' && patch.team ? { team: patch.team, colour: teamColours[patch.team] } : {}) }
       : item) });
   };
-  const toolButton = (item: Tool) => <button key={item} type="button" aria-label={toolName(item)} title={toolName(item)} aria-pressed={tool === item}
-    disabled={previewing || (moment > 0 && item !== 'select' && item !== 'pan')}
-    onClick={() => { setTool(item); setNotice(''); }}><span aria-hidden="true">{icon[item]}</span><small>{toolName(item)}</small></button>;
-
   return <section className="editor" aria-label="Diagram editor">
     <div className="canvas-header">
       <div className="button-row">
@@ -332,11 +322,8 @@ export function Studio({ exercise, onChange, onSave }: {
       </div>}
     </div>
     <div className="editor-workspace">
-      <div className="tools" aria-label="Pitch tools">
-        <div className="tool-group">{(['select', 'pan'] as const).map(toolButton)}</div>
-        <div className="tool-group">{dotKinds.map(toolButton)}</div>
-        <div className="tool-group">{drawingKinds.map(toolButton)}</div>
-      </div>
+      <ToolPalette tool={tool} playerColour={teamColours[team]} previewing={previewing} laterMoment={moment > 0}
+        onSelect={item => { setTool(item); setNotice(''); }} />
       <div className="field-panel">
         <div className={`canvas canvas-${tool === 'pan' ? 'pan' : tool === 'select' ? 'select' : 'place'}`}>
           <Pitch diagram={playback.elements ? { ...diagram, elements: playback.elements } : draft ?? { ...diagram, elements: editingElements }} groupRef={group} svgRef={svg}

@@ -36,7 +36,7 @@ function Markings({ pitch }: { pitch: Diagram['pitch'] }) {
   </g>;
 }
 
-function Symbol({ item, showNumbers }: { item: FieldElement; showNumbers: boolean }) {
+export function ElementSymbol({ item, showNumbers }: { item: Pick<FieldElement, 'kind' | 'colour'> & { number?: number }; showNumbers: boolean }) {
   const fill = item.colour;
   const outline = '#14291f';
   switch (item.kind) {
@@ -46,19 +46,26 @@ function Symbol({ item, showNumbers }: { item: FieldElement; showNumbers: boolea
     case 'ball':
       return <><circle r="1.66" fill={fill} stroke={outline} strokeWidth=".24" /><path d="M0 -1 L.95 -.3 L.57 .8 H-.57 L-.95 -.3Z" fill={outline} /></>;
     case 'cone':
-      return <path d="M0 -2.4 L1.8 1.8 H-1.8Z" fill={fill} stroke="#fff" strokeWidth=".25" />;
+      return <g fill={fill} stroke="#fff" strokeWidth=".24" strokeLinejoin="round">
+        <path d="M-2.3 1 H2.3 V2 H-2.3Z" /><path d="M0 -2.7 L1.7 1.2 H-1.7Z" />
+        <path d="M-.7 -.8 H.7 M-1.1 .15 H1.1" />
+      </g>;
     case 'pole':
       return <path d="M-1.5 2 H1.5 M0 2 V-2.8" fill="none" stroke={fill} strokeWidth=".72" strokeLinecap="round" />;
     case 'mannequin':
       return <g fill={fill} stroke={outline} strokeWidth=".2"><circle cy="-1.8" r=".95" /><path d="M-1.6 -.6 H1.6 L1 2.1 H-1Z" /></g>;
     case 'marker':
-      return <ellipse rx="1.55" ry="1.04" fill={fill} stroke="#fff" strokeWidth=".22" />;
+      return <g><ellipse rx="1.8" ry="1.2" fill={fill} stroke="#fff" strokeWidth=".22" /><ellipse rx=".65" ry=".42" fill={outline} /></g>;
     case 'gate':
-      return <g fill={fill} stroke="#fff" strokeWidth=".25"><circle cx="-2" r=".85" /><circle cx="2" r=".85" /></g>;
+      return <g fill={fill} stroke="#fff" strokeWidth=".25"><path d="M-2 0 H2" stroke={fill} strokeDasharray=".45 .4" /><circle cx="-2" r=".85" /><circle cx="2" r=".85" /></g>;
     case 'goal':
     case 'mini goal': {
       const half = item.kind === 'goal' ? 3.5 : 2.1;
-      return <g stroke={fill} strokeWidth=".5" fill="none"><path d={`M ${-half} 1.25 V -1.25 H ${half} V 1.25`} /><path d={`M ${-half} -.35 H ${half} M 0 -1.25 V 1.25`} opacity=".55" /></g>;
+      const top = item.kind === 'goal' ? -1.7 : -.9;
+      return <g stroke={fill} fill="none" strokeLinejoin="round">
+        <path d={`M ${-half} 1.25 L ${-half + .6} .55 H ${half - .6} L ${half} 1.25 M ${-half + .6} ${top} V .55 M ${half - .6} ${top} V .55 M 0 ${top} V 1.25 M ${-half} 0 H ${half}`} strokeWidth=".24" opacity=".7" />
+        <path d={`M ${-half} 1.25 V ${top} H ${half} V 1.25`} strokeWidth=".46" />
+      </g>;
     }
     default:
       return null;
@@ -122,7 +129,7 @@ export function Pitch({ diagram, groupRef, svgRef, selection = [], zoom = 1, pan
           })() : <g transform={`translate(${x} ${y}) ${vertical ? 'rotate(-90)' : ''} scale(${scale})`}>
             {item.kind === 'label'
               ? <text fill={item.colour} stroke={selected ? '#fff' : '#14291f'} strokeWidth=".45" paintOrder="stroke" fontSize="3.1" fontFamily="sans-serif" fontWeight="700">{item.text}</text>
-              : <><circle data-hit="true" r="4" fill="transparent" />{selected && <circle data-selection="true" r="3.55" fill="none" stroke="#f8f4b9" strokeWidth=".33" />}<Symbol item={item} showNumbers={diagram.showNumbers} /></>}
+              : <><circle data-hit="true" r="4" fill="transparent" />{selected && <circle data-selection="true" r="3.55" fill="none" stroke="#f8f4b9" strokeWidth=".33" />}<ElementSymbol item={item} showNumbers={diagram.showNumbers} /></>}
           </g>}
         </g>;
       })}

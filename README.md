@@ -22,7 +22,7 @@ Open the URL printed by Vite, create an account, and sign in. The API applies mi
 ## Use Studio
 
 - Choose a pitch preset. Open **Pitch settings** for dimensions, orientation, colour, numbers, and metre-grid snapping.
-- Select a player or equipment tool and tap or click the pitch. Keep the player tool active to place several players. Select a drawing tool and drag to create an arrow, path, line, or zone.
+- Use **Players & ball**, **Equipment**, or **Drawing** to find a tool. Tap or click the pitch to place the selected element, or drag to draw an arrow, path, line, or zone. Keep the player tool active to place several players.
 - Switch to **Select** to reposition elements. Hold Shift while selecting with a mouse or toggle **Multi-select** on touch. Change colour, team, or selection from the controls below the pitch.
 - Use Ctrl/Command+Z to undo, Ctrl/Command+Shift+Z to redo, arrow keys to nudge selected elements, and Delete to remove them. Ctrl/Command+S saves.
 - Give the exercise a title and save it. To resume, choose it from **My library**. Exercise details contains metadata, visibility, and duplicate and delete actions. A saved public or unlisted exercise has a share link.
